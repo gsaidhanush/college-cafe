@@ -1,11 +1,12 @@
 require('dotenv').config();
 const express    = require('express');
 const session    = require('express-session');
-const MongoStore = require('connect-mongo');
+const cors       = require('cors');
+const { FirestoreStore } = require('@google-cloud/connect-firestore');
 const path       = require('path');
 
-// Connect to MongoDB + register all models
-require('./models/db');
+// Initialize Firebase models and DB
+const { db } = require('./models/db');
 
 const authRoutes  = require('./routes/auth');
 const menuRoutes  = require('./routes/menu');
@@ -17,23 +18,27 @@ const PORT = process.env.PORT || 3000;
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/campus_cafe';
 
 // ── Middleware ────────────────────────────────────────────────────────────────
+app.use(cors({
+    origin: true, // Allows all origins properly, or specify your firebase domain if preferred
+    credentials: true // Crucial for receiving cookies from frontend domains
+}));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Session stored in MongoDB so it survives server restarts
+// Session stored in Firestore so it survives server restarts
 app.use(session({
+    // If you explicitly run behind proxy like Render, trust proxy is needed for secure+samesite=none
     secret:            process.env.SESSION_SECRET || 'cafe-secret-key',
     resave:            false,
     saveUninitialized: false,
-    store: MongoStore.create({
-        mongoUrl:           MONGO_URI,
-        collectionName:     'sessions',
-        ttl:                60 * 60 * 24,   // 1 day in seconds
-        autoRemove:         'native',
+    store: new FirestoreStore({
+        dataset: db,
+        kind: 'express-sessions',
     }),
     cookie: {
-        secure:   false,        // set true only if using HTTPS
+        secure:   process.env.NODE_ENV === 'production',        // true if on Render
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
         httpOnly: true,
         maxAge:   1000 * 60 * 60 * 24,  // 1 day in ms
     },
@@ -56,7 +61,10 @@ app.get('/admin/dashboard',      (req, res) => res.sendFile(path.join(__dirname,
 app.get('/admin/menu-management',(req, res) => res.sendFile(path.join(__dirname, 'public', 'admin', 'menu-management.html')));
 app.get('/admin/orders',         (req, res) => res.sendFile(path.join(__dirname, 'public', 'admin', 'orders.html')));
 
+// Trust proxy so express-session knows it's HTTPS behind Render's load balancer
+app.set('trust proxy', 1);
+
 app.listen(PORT, () => {
-    console.log(`✅ Campus Café running on http://localhost:${PORT}`);
+    console.log(`✅ Campus Café running on port ${PORT}`);
     console.log(`   Admin panel → http://localhost:${PORT}/admin/dashboard`);
 });

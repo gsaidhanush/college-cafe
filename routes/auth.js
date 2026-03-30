@@ -10,17 +10,18 @@ router.post('/register', async (req, res) => {
         return res.status(400).json({ error: 'All fields are required' });
 
     try {
-        const existing = await User.findOne({ email: email.toLowerCase() });
-        if (existing)
+        const existingSnap = await User.where('email', '==', email.toLowerCase()).limit(1).get();
+        if (!existingSnap.empty)
             return res.status(409).json({ error: 'Email already registered' });
 
         const hash = await bcrypt.hash(password, 10);
-        const user = await User.create({ name, email, password: hash });
+        const userData = { name, email: email.toLowerCase(), password: hash, role: 'student', createdAt: new Date() };
+        const userRef = await User.add(userData);
 
-        req.session.userId = user._id.toString();
-        req.session.userName = user.name;
-        req.session.userRole = user.role;
-        res.json({ success: true, name: user.name, role: user.role });
+        req.session.userId = userRef.id;
+        req.session.userName = userData.name;
+        req.session.userRole = userData.role;
+        res.json({ success: true, name: userData.name, role: userData.role });
     } catch (e) {
         console.error(e);
         res.status(500).json({ error: 'Registration failed' });
@@ -34,18 +35,21 @@ router.post('/login', async (req, res) => {
         return res.status(400).json({ error: 'Email and password required' });
 
     try {
-        const user = await User.findOne({ email: email.toLowerCase() });
-        if (!user)
+        const snapshot = await User.where('email', '==', email.toLowerCase()).limit(1).get();
+        if (snapshot.empty)
             return res.status(401).json({ error: 'Invalid credentials' });
+
+        const userDoc = snapshot.docs[0];
+        const user = userDoc.data();
 
         const match = await bcrypt.compare(password, user.password);
         if (!match)
             return res.status(401).json({ error: 'Invalid credentials' });
 
-        req.session.userId = user._id.toString();
+        req.session.userId = userDoc.id;
         req.session.userName = user.name;
-        req.session.userRole = user.role;
-        res.json({ success: true, name: user.name, role: user.role });
+        req.session.userRole = user.role || 'student';
+        res.json({ success: true, name: user.name, role: user.role || 'student' });
     } catch (e) {
         console.error(e);
         res.status(500).json({ error: 'Server error' });

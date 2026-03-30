@@ -1,3 +1,20 @@
+// ========== GLOBAL API CONFIG ==========
+// The base URL of the backend (e.g. Render). For local testing, it uses localhost.
+const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
+    ? 'http://localhost:3000' 
+    : 'https://college-cafe-backend.onrender.com'; // TODO: Update this to your actual Render URL when deployed!
+
+// Intercept all fetch calls starting with '/api' to point to the backend and include credentials for sessions
+const originalFetch = window.fetch;
+window.fetch = async function (resource, config) {
+    if (typeof resource === 'string' && resource.startsWith('/api')) {
+        resource = API_BASE + resource;
+        config = config || {};
+        config.credentials = 'include';
+    }
+    return originalFetch(resource, config);
+};
+
 // ========== UTILITY FUNCTIONS ==========
 
 // Cart management

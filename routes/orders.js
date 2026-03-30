@@ -15,11 +15,12 @@ router.post('/', requireAuth, async (req, res) => {
 
     try {
         const ids = items.map(i => i.menu_item_id);
-        const menuItems = await MenuItem.find({ _id: { $in: ids } }).lean();
+        const menuDocs = await Promise.all(ids.map(id => MenuItem.doc(id).get()));
+        const menuItems = menuDocs.filter(d => d.exists).map(d => ({ _id: d.id, ...d.data() }));
 
         let total = 0;
         const orderItems = items.map(item => {
-            const mi = menuItems.find(m => m._id.toString() === item.menu_item_id);
+            const mi = menuItems.find(m => m._id === item.menu_item_id);
             if (!mi) return null;
             total += mi.price * item.quantity;
             return {
@@ -35,14 +36,15 @@ router.post('/', requireAuth, async (req, res) => {
 
         const waitMinutes = Math.floor(Math.random() * 10) + 5;
 
-        const order = await Order.create({
+        const orderRef = await Order.add({
             user:                   req.session.userId,
             items:                  orderItems,
             total_price:            parseFloat(total.toFixed(2)),
             estimated_wait_minutes: waitMinutes,
+            createdAt:              new Date(),
         });
 
-        res.json({ success: true, orderId: order._id, total: total.toFixed(2), waitMinutes });
+        res.json({ success: true, orderId: orderRef.id, total: total.toFixed(2), waitMinutes });
     } catch (e) {
         console.error(e);
         res.status(500).json({ error: 'Failed to place order' });
@@ -52,19 +54,25 @@ router.post('/', requireAuth, async (req, res) => {
 // Get current user's orders
 router.get('/my', requireAuth, async (req, res) => {
     try {
-        const orders = await Order.find({ user: req.session.userId })
-            .sort({ createdAt: -1 })
-            .lean();
+        const ordersSnap = await Order.where('user', '==', req.session.userId).get();
+        const orders = ordersSnap.docs.map(o => ({ id: o.id, ...o.data() }));
+
+        // Sort manually by createdAt to avoid needing a composite index in Firestore immediately
+        orders.sort((a, b) => {
+            const timeA = a.createdAt?.toMillis ? a.createdAt.toMillis() : new Date(a.createdAt).getTime();
+            const timeB = b.createdAt?.toMillis ? b.createdAt.toMillis() : new Date(b.createdAt).getTime();
+            return timeB - timeA;
+        });
 
         const result = orders.map(o => ({
             ...o,
-            id: o._id,
-            order_time: o.createdAt,
+            order_time: o.createdAt?.toDate ? o.createdAt.toDate() : o.createdAt,
             items_summary: o.items.map(i => `${i.menu_item_name} x${i.quantity}`).join(', '),
         }));
 
         res.json(result);
     } catch (e) {
+        console.error(e);
         res.status(500).json({ error: 'Failed to fetch orders' });
     }
 });
