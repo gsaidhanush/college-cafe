@@ -1,7 +1,6 @@
 require('dotenv').config();
 const express    = require('express');
 const session    = require('express-session');
-const cors       = require('cors');
 const { FirestoreStore } = require('@google-cloud/connect-firestore');
 const path       = require('path');
 
@@ -18,17 +17,13 @@ const PORT = process.env.PORT || 3000;
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/campus_cafe';
 
 // ── Middleware ────────────────────────────────────────────────────────────────
-app.use(cors({
-    origin: true, // Allows all origins properly, or specify your firebase domain if preferred
-    credentials: true // Crucial for receiving cookies from frontend domains
-}));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Session stored in Firestore so it survives server restarts
 app.use(session({
-    // If you explicitly run behind proxy like Render, trust proxy is needed for secure+samesite=none
+    // Trust proxy is needed if running securely behind Render's load balancer
     secret:            process.env.SESSION_SECRET || 'cafe-secret-key',
     resave:            false,
     saveUninitialized: false,
@@ -37,8 +32,6 @@ app.use(session({
         kind: 'express-sessions',
     }),
     cookie: {
-        secure:   process.env.NODE_ENV === 'production',        // true if on Render
-        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
         httpOnly: true,
         maxAge:   1000 * 60 * 60 * 24,  // 1 day in ms
     },
