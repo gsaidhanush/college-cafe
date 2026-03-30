@@ -45,6 +45,16 @@ app.use(session({
 }));
 
 // ── API Routes ────────────────────────────────────────────────────────────────
+app.get('/api/health', async (req, res) => {
+    try {
+        const hasEnvVar = !!process.env.FIREBASE_SERVICE_ACCOUNT;
+        await db.collection('categories').limit(1).get();
+        res.json({ status: 'ok', firebase_connected: true, has_service_account_env: hasEnvVar });
+    } catch (err) {
+        res.status(500).json({ status: 'error', error: err.message, has_service_account_env: !!process.env.FIREBASE_SERVICE_ACCOUNT });
+    }
+});
+
 app.use('/api/auth',   authRoutes);
 app.use('/api/menu',   menuRoutes);
 app.use('/api/orders', orderRoutes);
